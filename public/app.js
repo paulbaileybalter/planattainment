@@ -196,15 +196,19 @@ function activeDayIndices() {
 }
 
 function pct(actual, planned) {
+  if (!planned && !actual) return null;
   if (!planned) return null;
   return (actual / planned) * 100;
 }
 
-function pctState(p) {
-  if (p === null) return "pending";
-  if (p >= 95) return "pass";
-  if (p >= 80) return "watch";
-  return "fail";
+// Three-way comparison against target, independent of rounding:
+//   below target -> red, target exactly met -> green (XPA), exceeded -> purple (IPA)
+function attainmentState(planned, actual, hasActual) {
+  if (!hasActual) return "pending";
+  if (planned === 0 && actual === 0) return "met";
+  if (actual < planned) return "below";
+  if (actual > planned) return "exceeded";
+  return "met";
 }
 
 // ---------------------------------------------------------------------------
@@ -249,8 +253,7 @@ function renderDayTabs() {
   });
 }
 
-function ring(p) {
-  const state = pctState(p);
+function ring(p, state) {
   const display = p === null ? "—" : `${Math.round(p)}%`;
   return el("div", { class: `ring ring-${state}` }, [
     el("span", { class: "ring-val", text: display }),
@@ -267,6 +270,7 @@ function renderKpiCards() {
     const planSum = sumRange(week.plan[cat.key], days);
     const actualSum = week.actual ? sumRange(week.actual[cat.key], days) : { total: 0, skus: {} };
     const p = week.hasActual ? pct(actualSum.total, planSum.total) : null;
+    const state = attainmentState(planSum.total, actualSum.total, week.hasActual);
 
     const card = el("div", { class: "kpi-card" }, [
       el("div", { class: "kpi-bar", style: `background:${cat.color}` }),
@@ -276,7 +280,7 @@ function renderKpiCards() {
             el("div", { class: "kpi-group", text: cat.group }),
             el("div", { class: "kpi-label", text: cat.label }),
           ]),
-          ring(p),
+          ring(p, state),
         ]),
         el("div", { class: "kpi-nums" }, [
           el("div", { class: "kpi-num" }, [
@@ -284,7 +288,7 @@ function renderKpiCards() {
             el("span", { class: "kpi-num-lbl", text: `planned ${cat.unit}` }),
           ]),
           el("div", { class: "kpi-num" }, [
-            el("span", { class: "kpi-num-val", text: week.hasActual ? fmtNum(actualSum.total) : "—" }),
+            el("span", { class: `kpi-num-val kpi-num-${state}`, text: week.hasActual ? fmtNum(actualSum.total) : "—" }),
             el("span", { class: "kpi-num-lbl", text: `actual ${cat.unit}` }),
           ]),
         ]),
@@ -315,7 +319,7 @@ function renderDailyChart() {
       const planned = week.plan[cat.key][d].total;
       const actual = week.actual ? week.actual[cat.key][d].total : 0;
       const p = week.hasActual ? pct(actual, planned) : null;
-      const state = pctState(p);
+      const state = attainmentState(planned, actual, week.hasActual);
       const maxVal = Math.max(planned, actual, 1);
       const plannedH = (planned / maxVal) * 100;
       const actualH = (actual / maxVal) * 100;
@@ -381,22 +385,116 @@ function renderSkuTables() {
       const planned = planSum.skus[sku] || 0;
       const actual = actualSum.skus[sku] || 0;
       const p = week.hasActual ? pct(actual, planned) : null;
-      return { sku, planned, actual, p };
+      const state = attainmentState(planned, actual, week.hasActual);
+      return { sku, planned, actual, p, state };
     }).sort((a, b) => b.planned - a.planned);
 
     for (const row of rows) {
-      const state = pctState(row.p);
       tbody.appendChild(el("tr", {}, [
         el("td", { class: "sku-name", text: row.sku }),
         el("td", { class: "num", text: fmtNum(row.planned) }),
-        el("td", { class: "num", text: week.hasActual ? fmtNum(row.actual) : "—" }),
-        el("td", { class: "num" }, [el("span", { class: `pct-pill pct-${state}`, text: row.p === null ? "—" : `${Math.round(row.p)}%` })]),
+        el("td", { class: `num num-${row.state}`, text: week.hasActual ? fmtNum(row.actual) : "—" }),
+        el("td", { class: "num" }, [el("span", { class: `pct-pill pct-${row.state}`, text: row.p === null ? "—" : `${Math.round(row.p)}%` })]),
       ]));
     }
     table.appendChild(tbody);
     card.appendChild(table);
     wrap.appendChild(card);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Export the four top tiles (for pasting into the 9AM handover email)
+// ---------------------------------------------------------------------------
+
+const STATE_COLOR = {
+  pending: "#9c9887",
+  below: "#D64545",
+  met: "#1f7a5c",
+  exceeded: "#7566A0",
+};
+
+function scopeLabel() {
+  const week = workbookWeeks[currentWeekIndex];
+  const dayPart = currentTab === "week" ? "Week total" : DAY_FULL[currentTab];
+  return `${week.label}${week.dateLabel ? " · " + week.dateLabel : ""} — ${dayPart}`;
+}
+
+function buildTilesData() {
+  const week = workbookWeeks[currentWeekIndex];
+  const days = activeDayIndices();
+  return CATEGORIES.map((cat) => {
+    const planSum = sumRange(week.plan[cat.key], days);
+    const actualSum = week.actual ? sumRange(week.actual[cat.key], days) : { total: 0, skus: {} };
+    const p = week.hasActual ? pct(actualSum.total, planSum.total) : null;
+    const state = attainmentState(planSum.total, actualSum.total, week.hasActual);
+    return { ...cat, planned: planSum.total, actual: actualSum.total, p, state, hasActual: week.hasActual };
+  });
+}
+
+function buildTilesHtml(tiles) {
+  const rows = tiles.map((t) => {
+    const color = STATE_COLOR[t.state];
+    const actualText = t.hasActual ? fmtNum(t.actual) : "—";
+    const pctText = t.p === null ? "—" : `${Math.round(t.p)}%`;
+    return `<tr>
+      <td style="padding:7px 12px;border-bottom:1px solid #E7E5DE;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#0B0B0C;font-weight:700;">${t.label}</td>
+      <td style="padding:7px 12px;border-bottom:1px solid #E7E5DE;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b6858;text-align:right;">${fmtNum(t.planned)} ${t.unit}</td>
+      <td style="padding:7px 12px;border-bottom:1px solid #E7E5DE;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:${color};font-weight:700;text-align:right;">${actualText} ${t.unit}</td>
+      <td style="padding:7px 12px;border-bottom:1px solid #E7E5DE;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:${color};font-weight:700;text-align:right;">${pctText}</td>
+    </tr>`;
+  }).join("");
+
+  return `<table style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;width:100%;max-width:520px;">
+    <tr><td colspan="4" style="padding:0 12px 4px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#0B0B0C;">Weekly Production Plan Attainment Snapshot</td></tr>
+    <tr><td colspan="4" style="padding:0 12px 8px;font-family:Arial,Helvetica,sans-serif;font-size:11.5px;color:#6b6858;">${scopeLabel()}</td></tr>
+    <tr>
+      <th style="padding:0 12px 6px;text-align:left;font-family:Arial,Helvetica,sans-serif;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#9c9887;border-bottom:2px solid #0B0B0C;">Category</th>
+      <th style="padding:0 12px 6px;text-align:right;font-family:Arial,Helvetica,sans-serif;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#9c9887;border-bottom:2px solid #0B0B0C;">Planned</th>
+      <th style="padding:0 12px 6px;text-align:right;font-family:Arial,Helvetica,sans-serif;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#9c9887;border-bottom:2px solid #0B0B0C;">Actual</th>
+      <th style="padding:0 12px 6px;text-align:right;font-family:Arial,Helvetica,sans-serif;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#9c9887;border-bottom:2px solid #0B0B0C;">Attainment</th>
+    </tr>
+    ${rows}
+  </table>`;
+}
+
+function buildTilesText(tiles) {
+  const header = `Weekly Production Plan Attainment Snapshot (${scopeLabel()})`;
+  const lines = tiles.map((t) => {
+    const actualText = t.hasActual ? fmtNum(t.actual) : "—";
+    const pctText = t.p === null ? "—" : `${Math.round(t.p)}%`;
+    return `${t.label}: Planned ${fmtNum(t.planned)} ${t.unit} | Actual ${actualText} ${t.unit} | ${pctText}`;
+  });
+  return [header, ...lines].join("\n");
+}
+
+async function copyTilesForEmail() {
+  const statusEl = document.getElementById("copyStatus");
+  const tiles = buildTilesData();
+  const html = buildTilesHtml(tiles);
+  const text = buildTilesText(tiles);
+
+  try {
+    if (window.ClipboardItem) {
+      const item = new ClipboardItem({
+        "text/html": new Blob([html], { type: "text/html" }),
+        "text/plain": new Blob([text], { type: "text/plain" }),
+      });
+      await navigator.clipboard.write([item]);
+    } else {
+      await navigator.clipboard.writeText(text);
+    }
+    statusEl.textContent = "Copied — paste into the handover email.";
+  } catch (err) {
+    console.error(err);
+    try {
+      await navigator.clipboard.writeText(text);
+      statusEl.textContent = "Copied as plain text — paste into the handover email.";
+    } catch (err2) {
+      statusEl.textContent = "Couldn't copy automatically — select the tiles and copy manually.";
+    }
+  }
+  setTimeout(() => { statusEl.textContent = ""; }, 4000);
 }
 
 function renderStatusBanner() {
@@ -488,7 +586,12 @@ function initWeekSelector() {
   });
 }
 
+function initCopyTiles() {
+  document.getElementById("copyTilesBtn").addEventListener("click", copyTilesForEmail);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   initUpload();
   initWeekSelector();
+  initCopyTiles();
 });

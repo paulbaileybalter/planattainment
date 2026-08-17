@@ -22,6 +22,8 @@
     --ink:#0B0B0C;
     --pale:#F1EB9C;
     --gold:#FFD637;
+    --red:#D64545;
+    --met:#1f7a5c;
     --paper:#FFFFFF;
     --line:#E7E5DE;
     --wash:#FAFAF7;
@@ -148,6 +150,12 @@
   .tab.active .tab-date{color:#c9c6e8;}
 
   /* ---------- KPI cards ---------- */
+  #kpiHeaderRow{display:flex; align-items:center; gap:12px; margin-bottom:10px; flex-wrap:wrap;}
+  #kpiHeaderRow h2{font-family:var(--font-display); font-size:13.5px; font-weight:700; margin:0; color:#6b6858;}
+  #copyStatus{font-family:var(--font-mono); font-size:11px; color:var(--met);}
+  #colorLegend{display:flex; gap:16px; flex-wrap:wrap; margin:2px 0 16px;}
+  #colorLegend span{display:flex; align-items:center; gap:6px; font-size:11.5px; color:#6b6858; font-family:var(--font-mono);}
+  #colorLegend i{width:9px; height:9px; border-radius:3px; display:inline-block;}
   #kpiCards{
     display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:14px; margin-bottom:22px;
   }
@@ -164,6 +172,10 @@
   .kpi-num{display:flex; flex-direction:column;}
   .kpi-num-val{font-family:var(--font-display); font-size:19px; font-weight:700;}
   .kpi-num-lbl{font-family:var(--font-mono); font-size:9.5px; color:#9c9887; text-transform:uppercase; letter-spacing:.05em;}
+  .kpi-num-pending{color:var(--ink);}
+  .kpi-num-met{color:var(--met);}
+  .kpi-num-below{color:var(--red);}
+  .kpi-num-exceeded{color:var(--purple);}
 
   .ring{
     width:46px; height:46px; border-radius:50%; flex:0 0 auto;
@@ -173,12 +185,12 @@
   .ring-val{font-family:var(--font-mono); font-size:11px; font-weight:700;}
   .ring-pending{border-color:var(--line); background:var(--wash); color:#a9a596;}
   .ring-pending .ring-val{color:#a9a596;}
-  .ring-pass{border-color:var(--teal); background:rgba(71,215,172,.14); }
-  .ring-pass .ring-val{color:#1f7a5c;}
-  .ring-watch{border-color:var(--gold); background:rgba(255,214,55,.18);}
-  .ring-watch .ring-val{color:#8a6d00;}
-  .ring-fail{border-color:var(--purple); background:rgba(117,102,160,.14);}
-  .ring-fail .ring-val{color:var(--purple);}
+  .ring-met{border-color:var(--teal); background:rgba(71,215,172,.14); }
+  .ring-met .ring-val{color:var(--met);}
+  .ring-below{border-color:var(--red); background:rgba(214,69,69,.12);}
+  .ring-below .ring-val{color:var(--red);}
+  .ring-exceeded{border-color:var(--purple); background:rgba(117,102,160,.14);}
+  .ring-exceeded .ring-val{color:var(--purple);}
 
   /* ---------- Daily charts ---------- */
   #dailyCharts{
@@ -205,9 +217,9 @@
   .chart-plan{position:absolute; bottom:0; left:0; width:100%; background:#DEDBCF; opacity:.9;}
   .chart-actual{position:relative; width:100%; z-index:1;}
   .chart-actual-pending{background:transparent;}
-  .chart-actual-pass{background:var(--teal);}
-  .chart-actual-watch{background:var(--gold);}
-  .chart-actual-fail{background:var(--purple);}
+  .chart-actual-met{background:var(--teal);}
+  .chart-actual-below{background:var(--red);}
+  .chart-actual-exceeded{background:var(--purple);}
   .chart-pct{font-family:var(--font-mono); font-size:10px; font-weight:700; color:#6b6858;}
   .chart-day{font-size:10.5px; font-weight:700; color:#9c9887;}
   .chart-legend{display:flex; gap:14px; padding:8px 2px 4px; border-top:1px solid var(--line); margin-top:8px;}
@@ -235,14 +247,18 @@
   .sku-table td{padding:8px 6px; border-bottom:1px solid var(--line);}
   .sku-table tr:last-child td{border-bottom:none;}
   .sku-name{font-weight:700;}
+  .num-pending{color:var(--ink);}
+  .num-met{color:var(--met); font-weight:700;}
+  .num-below{color:var(--red); font-weight:700;}
+  .num-exceeded{color:var(--purple); font-weight:700;}
   .pct-pill{
     display:inline-block; font-family:var(--font-mono); font-size:11px; font-weight:700;
     padding:2px 8px; border-radius:999px;
   }
   .pct-pending{background:var(--wash); color:#a9a596;}
-  .pct-pass{background:rgba(71,215,172,.18); color:#1f7a5c;}
-  .pct-watch{background:rgba(255,214,55,.24); color:#8a6d00;}
-  .pct-fail{background:rgba(117,102,160,.18); color:var(--purple);}
+  .pct-met{background:rgba(71,215,172,.18); color:var(--met);}
+  .pct-below{background:rgba(214,69,69,.14); color:var(--red);}
+  .pct-exceeded{background:rgba(117,102,160,.18); color:var(--purple);}
 
   @media (max-width: 900px){
     #kpiCards{grid-template-columns:repeat(2, minmax(0,1fr));}
@@ -310,6 +326,19 @@
 <div id="dashboard" style="display:none;">
   <div id="statusBanner"></div>
   <div id="dayTabs"></div>
+  <div id="colorLegend">
+    <span><i style="background:var(--red)"></i>Below target</span>
+    <span><i style="background:var(--teal)"></i>Target met</span>
+    <span><i style="background:var(--purple)"></i>Target exceeded</span>
+  </div>
+  <div id="kpiHeaderRow">
+    <h2>Weekly Production Plan Attainment Snapshot</h2>
+    <button class="btn" id="copyTilesBtn" title="Copy the four tiles for the handover email">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copy tiles for email
+    </button>
+    <span id="copyStatus"></span>
+  </div>
   <div id="kpiCards"></div>
   <div id="dailyCharts"></div>
   <div id="skuTables"></div>
