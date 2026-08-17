@@ -461,40 +461,34 @@ function buildTilesHtml(tiles) {
     const padRight = i < tiles.length - 1 ? "padding-right:12px;" : "";
 
     return `<td valign="top" style="${padRight}width:210px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:210px;background:#ffffff;border:1px solid #E7E5DE;">
-        <tr><td style="height:4px;line-height:4px;font-size:0;background:${t.color};">&nbsp;</td></tr>
-        <tr>
-          <td style="padding:14px 16px 16px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">
-              <tr>
-                <td valign="top" style="font-family:${EMAIL_FONT};">
-                  <div style="font-family:${EMAIL_MONO};font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:#9c9887;">${t.group}</div>
-                  <div style="font-family:${EMAIL_FONT};font-size:15px;font-weight:700;margin-top:2px;color:#0B0B0C;white-space:nowrap;">${t.label}</div>
-                </td>
-                <td valign="top" align="right" width="50">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
-                    <tr>
-                      <td align="center" valign="middle" width="50" height="50" style="width:50px;height:50px;border-radius:50%;border:3px solid ${ring.border};background:${ring.bg};font-family:${EMAIL_MONO};font-size:${pctFontSize}px;font-weight:700;color:${ring.val};white-space:nowrap;">${pctText}</td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin-top:14px;">
-              <tr>
-                <td valign="top" style="padding-right:16px;">
-                  <div style="font-family:${EMAIL_FONT};font-size:19px;font-weight:700;color:#0B0B0C;white-space:nowrap;">${fmtNum(t.planned)}</div>
-                  <div style="font-family:${EMAIL_MONO};font-size:9.5px;color:#9c9887;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;">planned ${t.unit}</div>
-                </td>
-                <td valign="top">
-                  <div style="font-family:${EMAIL_FONT};font-size:19px;font-weight:700;color:${numColor};white-space:nowrap;">${actualText}</div>
-                  <div style="font-family:${EMAIL_MONO};font-size:9.5px;color:#9c9887;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;">actual ${t.unit}</div>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-      </table>
+      <div style="background:#ffffff;border:1px solid #E7E5DE;border-radius:14px;overflow:hidden;">
+        <div style="height:4px;line-height:4px;font-size:0;background:${t.color};">&nbsp;</div>
+        <div style="padding:14px 16px 16px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">
+            <tr>
+              <td valign="top" style="font-family:${EMAIL_FONT};">
+                <div style="font-family:${EMAIL_MONO};font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:#9c9887;">${t.group}</div>
+                <div style="font-family:${EMAIL_FONT};font-size:15px;font-weight:700;margin-top:2px;color:#0B0B0C;white-space:nowrap;">${t.label}</div>
+              </td>
+              <td valign="top" align="right" width="52">
+                <div style="width:44px;height:44px;border-radius:50%;border:3px solid ${ring.border};background:${ring.bg};text-align:center;line-height:44px;font-family:${EMAIL_MONO};font-size:${pctFontSize}px;font-weight:700;color:${ring.val};white-space:nowrap;">${pctText}</div>
+              </td>
+            </tr>
+          </table>
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin-top:14px;">
+            <tr>
+              <td valign="top" style="padding-right:16px;">
+                <div style="font-family:${EMAIL_FONT};font-size:19px;font-weight:700;color:#0B0B0C;white-space:nowrap;">${fmtNum(t.planned)}</div>
+                <div style="font-family:${EMAIL_MONO};font-size:9.5px;color:#9c9887;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;">planned ${t.unit}</div>
+              </td>
+              <td valign="top">
+                <div style="font-family:${EMAIL_FONT};font-size:19px;font-weight:700;color:${numColor};white-space:nowrap;">${actualText}</div>
+                <div style="font-family:${EMAIL_MONO};font-size:9.5px;color:#9c9887;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;">actual ${t.unit}</div>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </div>
     </td>`;
   }).join("");
 
