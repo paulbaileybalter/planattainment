@@ -407,13 +407,6 @@ function renderSkuTables() {
 // Export the four top tiles (for pasting into the 9AM handover email)
 // ---------------------------------------------------------------------------
 
-const STATE_COLOR = {
-  pending: "#9c9887",
-  below: "#D64545",
-  met: "#1f7a5c",
-  exceeded: "#7566A0",
-};
-
 function scopeLabel() {
   const week = workbookWeeks[currentWeekIndex];
   const dayPart = currentTab === "week" ? "Week total" : DAY_FULL[currentTab];
@@ -432,30 +425,66 @@ function buildTilesData() {
   });
 }
 
+function ringStyleFor(state) {
+  switch (state) {
+    case "met": return { border: "#47D7AC", bg: "rgba(71,215,172,.14)", val: "#1f7a5c" };
+    case "below": return { border: "#D64545", bg: "rgba(214,69,69,.12)", val: "#D64545" };
+    case "exceeded": return { border: "#7566A0", bg: "rgba(117,102,160,.14)", val: "#7566A0" };
+    default: return { border: "#E7E5DE", bg: "#FAFAF7", val: "#a9a596" };
+  }
+}
+
+function numColorFor(state) {
+  switch (state) {
+    case "met": return "#1f7a5c";
+    case "below": return "#D64545";
+    case "exceeded": return "#7566A0";
+    default: return "#0B0B0C";
+  }
+}
+
+const EMAIL_FONT = "'Lexend',Arial,Helvetica,sans-serif";
+const EMAIL_MONO = "'IBM Plex Mono',Consolas,'Courier New',monospace";
+
 function buildTilesHtml(tiles) {
-  const rows = tiles.map((t) => {
-    const color = STATE_COLOR[t.state];
-    const actualText = t.hasActual ? fmtNum(t.actual) : "—";
+  const cards = tiles.map((t) => {
+    const ring = ringStyleFor(t.state);
+    const numColor = numColorFor(t.state);
     const pctText = t.p === null ? "—" : `${Math.round(t.p)}%`;
-    return `<tr>
-      <td style="padding:7px 12px;border-bottom:1px solid #E7E5DE;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#0B0B0C;font-weight:700;">${t.label}</td>
-      <td style="padding:7px 12px;border-bottom:1px solid #E7E5DE;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b6858;text-align:right;">${fmtNum(t.planned)} ${t.unit}</td>
-      <td style="padding:7px 12px;border-bottom:1px solid #E7E5DE;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:${color};font-weight:700;text-align:right;">${actualText} ${t.unit}</td>
-      <td style="padding:7px 12px;border-bottom:1px solid #E7E5DE;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:${color};font-weight:700;text-align:right;">${pctText}</td>
-    </tr>`;
+    const actualText = t.hasActual ? fmtNum(t.actual) : "—";
+    return `
+    <div style="flex:1 1 200px;min-width:190px;max-width:260px;background:#ffffff;border:1px solid #E7E5DE;border-radius:14px;box-shadow:0 1px 2px rgba(11,11,12,.04),0 6px 16px rgba(11,11,12,.05);overflow:hidden;font-family:${EMAIL_FONT};">
+      <div style="height:4px;line-height:4px;font-size:0;background:${t.color};">&nbsp;</div>
+      <div style="padding:14px 16px 16px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+          <div>
+            <div style="font-family:${EMAIL_MONO};font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:#9c9887;">${t.group}</div>
+            <div style="font-family:${EMAIL_FONT};font-size:15px;font-weight:700;margin-top:2px;color:#0B0B0C;">${t.label}</div>
+          </div>
+          <div style="width:46px;height:46px;border-radius:50%;border:3px solid ${ring.border};background:${ring.bg};display:flex;align-items:center;justify-content:center;flex:0 0 auto;text-align:center;">
+            <span style="font-family:${EMAIL_MONO};font-size:11px;font-weight:700;color:${ring.val};">${pctText}</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:14px;">
+          <div style="display:flex;flex-direction:column;">
+            <span style="font-family:${EMAIL_FONT};font-size:19px;font-weight:700;color:#0B0B0C;">${fmtNum(t.planned)}</span>
+            <span style="font-family:${EMAIL_MONO};font-size:9.5px;color:#9c9887;text-transform:uppercase;letter-spacing:.05em;">planned ${t.unit}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;">
+            <span style="font-family:${EMAIL_FONT};font-size:19px;font-weight:700;color:${numColor};">${actualText}</span>
+            <span style="font-family:${EMAIL_MONO};font-size:9.5px;color:#9c9887;text-transform:uppercase;letter-spacing:.05em;">actual ${t.unit}</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
   }).join("");
 
-  return `<table style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;width:100%;max-width:520px;">
-    <tr><td colspan="4" style="padding:0 12px 4px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;color:#0B0B0C;">Weekly Production Plan Attainment Snapshot</td></tr>
-    <tr><td colspan="4" style="padding:0 12px 8px;font-family:Arial,Helvetica,sans-serif;font-size:11.5px;color:#6b6858;">${scopeLabel()}</td></tr>
-    <tr>
-      <th style="padding:0 12px 6px;text-align:left;font-family:Arial,Helvetica,sans-serif;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#9c9887;border-bottom:2px solid #0B0B0C;">Category</th>
-      <th style="padding:0 12px 6px;text-align:right;font-family:Arial,Helvetica,sans-serif;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#9c9887;border-bottom:2px solid #0B0B0C;">Planned</th>
-      <th style="padding:0 12px 6px;text-align:right;font-family:Arial,Helvetica,sans-serif;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#9c9887;border-bottom:2px solid #0B0B0C;">Actual</th>
-      <th style="padding:0 12px 6px;text-align:right;font-family:Arial,Helvetica,sans-serif;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#9c9887;border-bottom:2px solid #0B0B0C;">Attainment</th>
-    </tr>
-    ${rows}
-  </table>`;
+  return `<div style="font-family:${EMAIL_FONT};">
+    <div style="font-family:${EMAIL_FONT};font-size:15px;font-weight:700;color:#0B0B0C;margin-bottom:2px;">Weekly Production Plan Attainment Snapshot</div>
+    <div style="font-family:${EMAIL_FONT};font-size:11.5px;color:#6b6858;margin-bottom:12px;">${scopeLabel()}</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;">${cards}
+    </div>
+  </div>`;
 }
 
 function buildTilesText(tiles) {
