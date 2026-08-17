@@ -446,45 +446,63 @@ function numColorFor(state) {
 const EMAIL_FONT = "'Lexend',Arial,Helvetica,sans-serif";
 const EMAIL_MONO = "'IBM Plex Mono',Consolas,'Courier New',monospace";
 
+// Table-based layout on purpose: flexbox/grid inline styles get stripped by
+// most rich-text paste-cleanup routines (including custom email-generator
+// editors), but actual <table>/<td> structure and vertical-align/text-align
+// survive almost everywhere. This is the same reason real HTML emails are
+// built with tables instead of flex.
 function buildTilesHtml(tiles) {
-  const cards = tiles.map((t) => {
+  const cardCells = tiles.map((t, i) => {
     const ring = ringStyleFor(t.state);
     const numColor = numColorFor(t.state);
     const pctText = t.p === null ? "—" : `${Math.round(t.p)}%`;
+    const pctFontSize = pctText.length >= 4 ? 9 : 10.5;
     const actualText = t.hasActual ? fmtNum(t.actual) : "—";
-    return `
-    <div style="flex:1 1 200px;min-width:190px;max-width:260px;background:#ffffff;border:1px solid #E7E5DE;border-radius:14px;box-shadow:0 1px 2px rgba(11,11,12,.04),0 6px 16px rgba(11,11,12,.05);overflow:hidden;font-family:${EMAIL_FONT};">
-      <div style="height:4px;line-height:4px;font-size:0;background:${t.color};">&nbsp;</div>
-      <div style="padding:14px 16px 16px;">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
-          <div>
-            <div style="font-family:${EMAIL_MONO};font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:#9c9887;">${t.group}</div>
-            <div style="font-family:${EMAIL_FONT};font-size:15px;font-weight:700;margin-top:2px;color:#0B0B0C;">${t.label}</div>
-          </div>
-          <div style="width:46px;height:46px;border-radius:50%;border:3px solid ${ring.border};background:${ring.bg};display:flex;align-items:center;justify-content:center;flex:0 0 auto;text-align:center;">
-            <span style="font-family:${EMAIL_MONO};font-size:11px;font-weight:700;color:${ring.val};">${pctText}</span>
-          </div>
-        </div>
-        <div style="display:flex;gap:16px;margin-top:14px;">
-          <div style="display:flex;flex-direction:column;">
-            <span style="font-family:${EMAIL_FONT};font-size:19px;font-weight:700;color:#0B0B0C;">${fmtNum(t.planned)}</span>
-            <span style="font-family:${EMAIL_MONO};font-size:9.5px;color:#9c9887;text-transform:uppercase;letter-spacing:.05em;">planned ${t.unit}</span>
-          </div>
-          <div style="display:flex;flex-direction:column;">
-            <span style="font-family:${EMAIL_FONT};font-size:19px;font-weight:700;color:${numColor};">${actualText}</span>
-            <span style="font-family:${EMAIL_MONO};font-size:9.5px;color:#9c9887;text-transform:uppercase;letter-spacing:.05em;">actual ${t.unit}</span>
-          </div>
-        </div>
-      </div>
-    </div>`;
+    const padRight = i < tiles.length - 1 ? "padding-right:12px;" : "";
+
+    return `<td valign="top" style="${padRight}width:210px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;width:210px;background:#ffffff;border:1px solid #E7E5DE;">
+        <tr><td style="height:4px;line-height:4px;font-size:0;background:${t.color};">&nbsp;</td></tr>
+        <tr>
+          <td style="padding:14px 16px 16px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">
+              <tr>
+                <td valign="top" style="font-family:${EMAIL_FONT};">
+                  <div style="font-family:${EMAIL_MONO};font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:#9c9887;">${t.group}</div>
+                  <div style="font-family:${EMAIL_FONT};font-size:15px;font-weight:700;margin-top:2px;color:#0B0B0C;white-space:nowrap;">${t.label}</div>
+                </td>
+                <td valign="top" align="right" width="50">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+                    <tr>
+                      <td align="center" valign="middle" width="50" height="50" style="width:50px;height:50px;border-radius:50%;border:3px solid ${ring.border};background:${ring.bg};font-family:${EMAIL_MONO};font-size:${pctFontSize}px;font-weight:700;color:${ring.val};white-space:nowrap;">${pctText}</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin-top:14px;">
+              <tr>
+                <td valign="top" style="padding-right:16px;">
+                  <div style="font-family:${EMAIL_FONT};font-size:19px;font-weight:700;color:#0B0B0C;white-space:nowrap;">${fmtNum(t.planned)}</div>
+                  <div style="font-family:${EMAIL_MONO};font-size:9.5px;color:#9c9887;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;">planned ${t.unit}</div>
+                </td>
+                <td valign="top">
+                  <div style="font-family:${EMAIL_FONT};font-size:19px;font-weight:700;color:${numColor};white-space:nowrap;">${actualText}</div>
+                  <div style="font-family:${EMAIL_MONO};font-size:9.5px;color:#9c9887;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;">actual ${t.unit}</div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>`;
   }).join("");
 
-  return `<div style="font-family:${EMAIL_FONT};">
-    <div style="font-family:${EMAIL_FONT};font-size:15px;font-weight:700;color:#0B0B0C;margin-bottom:2px;">Weekly Production Plan Attainment Snapshot</div>
-    <div style="font-family:${EMAIL_FONT};font-size:11.5px;color:#6b6858;margin-bottom:12px;">${scopeLabel()}</div>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;">${cards}
-    </div>
-  </div>`;
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:${EMAIL_FONT};">
+    <tr><td colspan="${tiles.length}" style="font-family:${EMAIL_FONT};font-size:15px;font-weight:700;color:#0B0B0C;padding:0 0 2px;">Weekly Production Plan Attainment Snapshot</td></tr>
+    <tr><td colspan="${tiles.length}" style="font-family:${EMAIL_FONT};font-size:11.5px;color:#6b6858;padding:0 0 12px;">${scopeLabel()}</td></tr>
+    <tr>${cardCells}</tr>
+  </table>`;
 }
 
 function buildTilesText(tiles) {
