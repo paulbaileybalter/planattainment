@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Rename this to whatever you want the Cloudflare Worker project to be called.
+  "name": "balter-production-attainment",
+  "main": "src/worker.js",
+  // Bump this to today's date if you fork/reuse this config later.
+  "compatibility_date": "2026-08-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    // Unconditionally invoke the Worker for every request (including static
+    // files) so the session-cookie check always runs before anything is served.
+    "run_worker_first": true
+  },
+  "observability": {
+    "logs": {
+      "enabled": true
+    }
+  }
+}
