@@ -543,7 +543,7 @@ function renderStatusBanner() {
   const week = workbookWeeks[currentWeekIndex];
   if (!week.hasActual) {
     banner.style.display = "flex";
-    banner.textContent = `Awaiting actuals for ${week.label} — showing plan only. Upload the sheet again once "Attainment of ${week.label.replace('WC ', 'WC ')}" has been filled in.`;
+    banner.textContent = `Awaiting actuals for ${week.label} — showing plan only. Hit Refresh once the "Attainment of ${week.label}" tab has been filled in.`;
   } else {
     banner.style.display = "none";
   }
@@ -561,7 +561,118 @@ function renderDashboard() {
 }
 
 // ---------------------------------------------------------------------------
-// Upload handling
+// Loading data: live Google Sheet (primary), manual upload (fallback)
+// ---------------------------------------------------------------------------
+
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
+let dataSource = "none"; // "sheet" | "upload" | "none"
+let lastLoadedAt = null;
+let loadingSheet = false;
+
+function fmtClock(d) {
+  return d.toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" });
+}
+
+function setLiveBar(state, text) {
+  const bar = document.getElementById("liveBar");
+  bar.style.display = "flex";
+  bar.className = "live-bar live-" + state; // ok | loading | error | upload
+  document.getElementById("liveText").textContent = text;
+}
+
+// Parses a workbook and renders it. Keeps the same week and day selected
+// across a refresh when that week is still in the data.
+function applyWorkbook(workbook) {
+  const weeks = parseWorkbook(workbook);
+  if (weeks.length === 0) return false;
+  const prev = workbookWeeks[currentWeekIndex];
+  const prevId = prev ? prev.id : null;
+  const prevTab = currentTab;
+  workbookWeeks = weeks;
+  const keep = prevId ? weeks.findIndex((w) => w.id === prevId) : -1;
+  if (keep >= 0) {
+    currentWeekIndex = keep;
+    currentTab = prevTab;
+  } else {
+    currentWeekIndex = 0;
+    currentTab = "week";
+  }
+  renderWeekSelector();
+  renderDashboard();
+  return true;
+}
+
+async function loadFromSheet(force) {
+  if (loadingSheet) return;
+  loadingSheet = true;
+  const btn = document.getElementById("refreshBtn");
+  btn.disabled = true;
+  btn.classList.add("spinning");
+  if (dataSource !== "sheet") setLiveBar("loading", "Loading the latest Google Sheet…");
+
+  try {
+    const resp = await fetch("/api/sheet" + (force ? "?refresh=1" : ""), {
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    if (resp.status === 401) {
+      window.location.href = "/login"; // session expired
+      return;
+    }
+    if (!resp.ok) {
+      let msg = "Couldn't load the Google Sheet.";
+      try {
+        const j = await resp.json();
+        msg += " " + (j.hint || j.error || "");
+      } catch (e) { /* not JSON */ }
+      throw new Error(msg.trim());
+    }
+    const buf = await resp.arrayBuffer();
+    const workbook = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: true });
+    if (!applyWorkbook(workbook)) {
+      throw new Error('The sheet loaded, but no tabs named "Plan for WC ######" were found.');
+    }
+    dataSource = "sheet";
+    lastLoadedAt = new Date(resp.headers.get("X-Fetched-At") || Date.now());
+    setLiveBar("ok", `Live from Google Sheet · updated ${fmtClock(lastLoadedAt)}`);
+  } catch (err) {
+    console.error(err);
+    if (dataSource === "sheet") {
+      setLiveBar("error", `${err.message} Showing the data last loaded${lastLoadedAt ? " at " + fmtClock(lastLoadedAt) : ""}.`);
+    } else {
+      setLiveBar("error", `${err.message} You can upload the workbook instead.`);
+      document.getElementById("uploadCard").open = true;
+    }
+  } finally {
+    loadingSheet = false;
+    btn.disabled = false;
+    btn.classList.remove("spinning");
+  }
+}
+
+function initAutoRefresh() {
+  document.getElementById("refreshBtn").addEventListener("click", () => loadFromSheet(true));
+
+  // Re-pull every few minutes while the tab is open and in view.
+  setInterval(() => {
+    if (document.visibilityState === "visible" && dataSource === "sheet") loadFromSheet(false);
+  }, AUTO_REFRESH_MS);
+
+  // And when someone comes back to a tab that has been sitting in the background.
+  document.addEventListener("visibilitychange", () => {
+    if (
+      document.visibilityState === "visible" &&
+      dataSource === "sheet" &&
+      lastLoadedAt &&
+      Date.now() - lastLoadedAt.getTime() > AUTO_REFRESH_MS
+    ) {
+      loadFromSheet(false);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Manual upload (fallback if the sheet can't be reached)
 // ---------------------------------------------------------------------------
 
 function handleFile(file) {
@@ -572,18 +683,14 @@ function handleFile(file) {
     try {
       const data = new Uint8Array(e.target.result);
       const workbook = XLSX.read(data, { type: "array", cellDates: true });
-      const weeks = parseWorkbook(workbook);
-      if (weeks.length === 0) {
+      if (!applyWorkbook(workbook)) {
         statusEl.textContent = "No \"Plan for WC ######\" tabs found in that file.";
         return;
       }
-      workbookWeeks = weeks;
-      currentWeekIndex = 0;
-      currentTab = "week";
-      renderWeekSelector();
-      renderDashboard();
-      statusEl.textContent = `Loaded ${weeks.length} week${weeks.length === 1 ? "" : "s"} from ${file.name}.`;
-      document.getElementById("uploadCard").classList.add("uploaded");
+      dataSource = "upload"; // pauses auto-refresh until Refresh is clicked
+      lastLoadedAt = new Date();
+      statusEl.textContent = `Loaded ${workbookWeeks.length} week${workbookWeeks.length === 1 ? "" : "s"} from ${file.name}.`;
+      setLiveBar("upload", `Showing uploaded file: ${file.name}. Click Refresh to go back to the live sheet.`);
     } catch (err) {
       console.error(err);
       statusEl.textContent = "Couldn't read that file — is it the Weekly Production Plan Attainment workbook (.xlsx)?";
@@ -635,4 +742,6 @@ document.addEventListener("DOMContentLoaded", () => {
   initUpload();
   initWeekSelector();
   initCopyTiles();
+  initAutoRefresh();
+  loadFromSheet(false);
 });

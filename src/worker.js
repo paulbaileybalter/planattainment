@@ -213,6 +213,152 @@ function escapeHtml(s) {
 }
 
 // ---------------------------------------------------------------------------
+// Google Sheet fetch (/api/sheet)
+//
+// Pulls the whole workbook as .xlsx from Google and hands the bytes to the
+// browser, which parses it with the same SheetJS code used for manual
+// uploads. Only reachable once signed in (the auth check runs first).
+//
+// Two modes, chosen automatically:
+//   1. Service account (private sheet): used if the GOOGLE_SERVICE_ACCOUNT_JSON
+//      secret is set. The sheet is shared with the service account's email
+//      as a Viewer, and the Drive API exports it.
+//   2. Link sharing (default): the sheet is set to "Anyone with the link can
+//      view" and the public export URL is used. No secret needed.
+//
+// SHEET_ID comes from wrangler.jsonc "vars" (or a secret of the same name).
+// ---------------------------------------------------------------------------
+
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const SHEET_CACHE_MS = 60 * 1000; // don't hit Google more than once a minute per isolate
+
+let sheetCache = null;   // { at: number, bytes: ArrayBuffer }
+let saTokenCache = null; // { token: string, exp: number }
+
+function jsonError(status, error, hint) {
+  return new Response(JSON.stringify({ error, hint }), {
+    status,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+  });
+}
+
+function pemToArrayBuffer(pem) {
+  const b64 = pem.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+
+function textToBase64Url(text) {
+  return bytesToBase64Url(new TextEncoder().encode(text));
+}
+
+async function getServiceAccountToken(env) {
+  const now = Math.floor(Date.now() / 1000);
+  if (saTokenCache && saTokenCache.exp - 60 > now) return saTokenCache.token;
+
+  const sa = JSON.parse(env.GOOGLE_SERVICE_ACCOUNT_JSON);
+  const header = { alg: "RS256", typ: "JWT" };
+  const claims = {
+    iss: sa.client_email,
+    scope: "https://www.googleapis.com/auth/drive.readonly",
+    aud: "https://oauth2.googleapis.com/token",
+    iat: now,
+    exp: now + 3600,
+  };
+  const unsigned = `${textToBase64Url(JSON.stringify(header))}.${textToBase64Url(JSON.stringify(claims))}`;
+  const key = await crypto.subtle.importKey(
+    "pkcs8",
+    pemToArrayBuffer(sa.private_key),
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(unsigned));
+  const assertion = `${unsigned}.${bytesToBase64Url(new Uint8Array(sig))}`;
+
+  const resp = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion,
+    }),
+  });
+  if (!resp.ok) throw new Error(`Google token exchange failed (${resp.status})`);
+  const data = await resp.json();
+  saTokenCache = { token: data.access_token, exp: now + (data.expires_in || 3600) };
+  return saTokenCache.token;
+}
+
+async function fetchSheetBytes(env) {
+  const id = env.SHEET_ID;
+  if (env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    const token = await getServiceAccountToken(env);
+    const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}/export?mimeType=${encodeURIComponent(XLSX_MIME)}`;
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!resp.ok) {
+      const err = new Error(`Drive API export failed (${resp.status})`);
+      err.hint = "Check the sheet is shared with the service account's email as a Viewer, and that the Google Drive API is enabled for its project.";
+      throw err;
+    }
+    return resp.arrayBuffer();
+  }
+
+  const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/export?format=xlsx`;
+  const resp = await fetch(url, { redirect: "follow" });
+  if (!resp.ok) {
+    const err = new Error(`Google returned ${resp.status}`);
+    err.hint = "Check the sheet's sharing is set to 'Anyone with the link' as Viewer.";
+    throw err;
+  }
+  const bytes = await resp.arrayBuffer();
+  // A real .xlsx is a zip file and starts with "PK". An HTML sign-in page doesn't.
+  const head = new Uint8Array(bytes.slice(0, 2));
+  if (head[0] !== 0x50 || head[1] !== 0x4b) {
+    const err = new Error("Google returned a web page instead of the spreadsheet");
+    err.hint = "The sheet is probably not shared as 'Anyone with the link' (Viewer).";
+    throw err;
+  }
+  return bytes;
+}
+
+async function handleSheet(request, env) {
+  if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
+  if (!env.SHEET_ID) {
+    return jsonError(501, "No sheet configured", "Set SHEET_ID in wrangler.jsonc vars.");
+  }
+
+  const force = new URL(request.url).searchParams.get("refresh") === "1";
+  const now = Date.now();
+  let bytes;
+  let fetchedAt;
+  if (sheetCache && !force && now - sheetCache.at < SHEET_CACHE_MS) {
+    bytes = sheetCache.bytes;
+    fetchedAt = sheetCache.at;
+  } else {
+    try {
+      bytes = await fetchSheetBytes(env);
+    } catch (e) {
+      console.error("sheet fetch failed:", e && e.message);
+      return jsonError(502, (e && e.message) || "Sheet fetch failed", e && e.hint);
+    }
+    fetchedAt = now;
+    sheetCache = { at: fetchedAt, bytes };
+  }
+
+  return new Response(bytes, {
+    status: 200,
+    headers: {
+      "Content-Type": XLSX_MIME,
+      "Cache-Control": "no-store",
+      "X-Fetched-At": new Date(fetchedAt).toISOString(),
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
 
@@ -274,6 +420,11 @@ export default {
         status: 401,
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    // --- Google Sheet feed, only reachable once authenticated ---
+    if (path === "/api/sheet") {
+      return handleSheet(request, env);
     }
 
     // --- Static site files ---

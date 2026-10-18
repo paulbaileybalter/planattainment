@@ -12,6 +12,13 @@
     // files) so the session-cookie check always runs before anything is served.
     "run_worker_first": true
   },
+  "vars": {
+    // The Google Sheet the dashboard reads automatically. This is the long ID
+    // in the sheet's URL: docs.google.com/spreadsheets/d/<THIS PART>/edit
+    // It is not a password, but anyone with it can open the sheet if it is
+    // shared as "Anyone with the link", so keep this repo private.
+    "SHEET_ID": "1nEK-2VbBsQW99XDpZ3MTuPOiy_0x_K9qdqyGFMMFRIo"
+  },
   "observability": {
     "logs": {
       "enabled": true
